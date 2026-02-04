@@ -65,7 +65,12 @@ const startServer = async () => {
     // Socket.io
     const io = socketIo(server, {
       cors: {
-        origin: [process.env.CLIENT_URL, 'http://localhost:3000', 'http://localhost:5173'],
+        origin: [
+          process.env.CLIENT_URL,
+          'https://qwerty-quest-client.vercel.app',
+          'http://localhost:3000',
+          'http://localhost:5173'
+        ],
         credentials: true
       }
     });
