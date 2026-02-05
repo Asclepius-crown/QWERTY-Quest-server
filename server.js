@@ -78,9 +78,111 @@ const startServer = async () => {
 
     let matchmakingQueue = [];
     let activeRaces = new Map(); // raceId -> { participants, text, startTime, ... }
+    let connectedUsers = new Map(); // userId -> socketId (for notifications/invites)
+    let privateLobbies = new Map(); // roomId -> [participants]
 
     io.on('connection', (socket) => {
       console.log('User connected:', socket.id);
+
+      socket.on('register', (userId) => {
+        connectedUsers.set(userId, socket.id);
+      });
+
+      // --- Challenge System ---
+      socket.on('send-challenge', async ({ targetUserId, senderName }) => {
+        const targetSocketId = connectedUsers.get(targetUserId);
+        if (targetSocketId) {
+          io.to(targetSocketId).emit('challenge-received', { 
+            challengerId: socket.userId, // Assuming we had userId, but we can pass it from client
+            challengerName: senderName 
+          });
+        }
+      });
+
+      socket.on('respond-challenge', ({ challengerId, accepted, responderId }) => {
+        const challengerSocketId = connectedUsers.get(challengerId);
+        
+        if (accepted) {
+          const roomId = `private_${Date.now()}_${Math.random()}`;
+          // Notify both to join this room
+          if (challengerSocketId) io.to(challengerSocketId).emit('challenge-accepted', { roomId });
+          socket.emit('challenge-accepted', { roomId }); // Notify responder
+        } else {
+          if (challengerSocketId) io.to(challengerSocketId).emit('challenge-declined');
+        }
+      });
+
+      // --- Private Lobby Join ---
+      socket.on('join-private', async (data) => {
+        const { userId, roomId } = data;
+        
+        if (!privateLobbies.has(roomId)) {
+           privateLobbies.set(roomId, []);
+        }
+        
+        const lobby = privateLobbies.get(roomId);
+        // Avoid duplicate join
+        if (!lobby.find(p => p.userId === userId)) {
+            lobby.push({ socketId: socket.id, userId });
+        }
+
+        if (lobby.length === 2) {
+           // Start Private Race
+           const participants = lobby;
+           // Remove from waiting map
+           privateLobbies.delete(roomId);
+
+           // Reuse race start logic
+           const textDoc = await Text.findOne({ difficulty: 'medium' }); // Default medium for now
+           if (!textDoc) return;
+
+           // Fetch user details
+           const participantsWithUserDetails = await Promise.all(
+            participants.map(async (p) => {
+              const user = await User.findById(p.userId);
+              return {
+                ...p,
+                username: user?.username || 'Unknown',
+                displayName: user?.displayName || user?.username || 'Unknown'
+              };
+            })
+           );
+
+           const race = new Race({
+            participants: participantsWithUserDetails.map(p => ({ userId: p.userId })),
+            text: textDoc._id,
+            type: 'multiplayer' // or 'private'
+           });
+           await race.save();
+
+           activeRaces.set(roomId, {
+            id: race._id,
+            participants: participantsWithUserDetails,
+            text: textDoc.content,
+            textId: textDoc._id,
+            startTime: Date.now() + 3000,
+            progress: new Map()
+           });
+
+           // Emit start
+           participantsWithUserDetails.forEach(p => {
+             const sock = io.sockets.sockets.get(p.socketId);
+             if (sock) {
+               sock.join(roomId);
+               sock.emit('race-matched', {
+                 raceId: roomId,
+                 text: textDoc.content,
+                 participants: participantsWithUserDetails.map(user => ({ 
+                   userId: user.userId,
+                   username: user.username,
+                   displayName: user.displayName
+                 })),
+                 startTime: activeRaces.get(roomId).startTime
+               });
+             }
+           });
+        }
+      });
 
       socket.on('join-queue', async (data) => {
         const { userId } = data;
