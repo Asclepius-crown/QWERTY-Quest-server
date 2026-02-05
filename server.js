@@ -87,15 +87,27 @@ const startServer = async () => {
 
         if (matchmakingQueue.length >= 2) {
           // Start race
-          const participants = matchmakingQueue.splice(0, 2); // Take first 2
+          const queueParticipants = matchmakingQueue.splice(0, 2); // Take first 2
           const raceId = `race_${Date.now()}_${Math.random()}`;
 
           // Get random text
           const textDoc = await Text.findOne({ difficulty: 'medium' });
           if (!textDoc) return;
 
+          // Fetch user details for participants
+          const participantsWithUserDetails = await Promise.all(
+            queueParticipants.map(async (p) => {
+              const user = await User.findById(p.userId);
+              return {
+                ...p,
+                username: user?.username || 'Unknown',
+                displayName: user?.displayName || user?.username || 'Unknown'
+              };
+            })
+          );
+
           const race = new Race({
-            participants: participants.map(p => ({ userId: p.userId })),
+            participants: participantsWithUserDetails.map(p => ({ userId: p.userId })),
             text: textDoc._id,
             type: 'multiplayer'
           });
@@ -103,7 +115,7 @@ const startServer = async () => {
 
           activeRaces.set(raceId, {
             id: race._id,
-            participants,
+            participants: participantsWithUserDetails,
             text: textDoc.content,
             textId: textDoc._id,
             startTime: Date.now() + 3000, // 3 second countdown
@@ -111,14 +123,18 @@ const startServer = async () => {
           });
 
           // Emit to participants
-          participants.forEach(p => {
+          participantsWithUserDetails.forEach(p => {
             const sock = io.sockets.sockets.get(p.socketId);
             if (sock) {
               sock.join(raceId);
               sock.emit('race-matched', {
                 raceId,
                 text: textDoc.content,
-                participants: participants.map(p => ({ userId: p.userId })),
+                participants: participantsWithUserDetails.map(p => ({ 
+                  userId: p.userId,
+                  username: p.username,
+                  displayName: p.displayName
+                })),
                 startTime: activeRaces.get(raceId).startTime
               });
             }
