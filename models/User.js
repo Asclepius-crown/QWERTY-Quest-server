@@ -69,6 +69,17 @@ const UserSchema = new mongoose.Schema({
     intimacy: { type: Number, default: 0 },
     since: { type: Date, default: Date.now }
   }],
+  blockedUsers: [{
+    userId: { type: mongoose.Schema.Types.ObjectId, ref: 'User' },
+    reason: { type: String, default: '' },
+    blockedAt: { type: Date, default: Date.now }
+  }],
+  reports: [{
+    reportedUserId: { type: mongoose.Schema.Types.ObjectId, ref: 'User' },
+    reason: { type: String, required: true },
+    details: { type: String, default: '' },
+    reportedAt: { type: Date, default: Date.now }
+  }],
   createdAt: {
     type: Date,
     default: Date.now

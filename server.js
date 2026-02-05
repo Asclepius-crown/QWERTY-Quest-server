@@ -112,6 +112,18 @@ const startServer = async () => {
         }
       });
 
+      // --- Direct Messaging / Poke ---
+      socket.on('send-poke', ({ targetUserId, senderName, message }) => {
+        const targetSocketId = connectedUsers.get(targetUserId);
+        if (targetSocketId) {
+          io.to(targetSocketId).emit('poke-received', { 
+            senderId: socket.userId, // sender userId if available or pass it in data
+            senderName,
+            message 
+          });
+        }
+      });
+
       // --- Private Lobby Join ---
       socket.on('join-private', async (data) => {
         const { userId, roomId } = data;
