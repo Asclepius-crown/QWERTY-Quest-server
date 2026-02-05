@@ -14,16 +14,18 @@ router.get('/', auth, async (req, res) => {
     if (!user) return res.status(404).json({ msg: 'User not found' });
 
     // Format for client
-    const friends = user.friends.map(f => ({
-      id: f.friendId._id,
-      username: f.friendId.username,
-      netId: f.friendId.netId,
-      avatar: f.friendId.avatar,
-      rank: f.friendId.stats.rank,
-      status: f.status, // pending_sent, pending_received, accepted
-      intimacy: f.intimacy,
-      since: f.since
-    }));
+    const friends = user.friends
+      .filter(f => f.friendId) // Ensure populated user exists
+      .map(f => ({
+        id: f.friendId._id,
+        username: f.friendId.username,
+        netId: f.friendId.netId,
+        avatar: f.friendId.avatar,
+        rank: f.friendId.stats.rank,
+        status: f.status, // pending_sent, pending_received, accepted
+        intimacy: f.intimacy,
+        since: f.since
+      }));
 
     res.json(friends);
   } catch (err) {
@@ -37,6 +39,8 @@ router.post('/request', auth, async (req, res) => {
   try {
     const { username } = req.body; // Can be username OR netId
     const senderId = req.user.id;
+    
+    console.log(`[Friend Request] From: ${senderId}, To: ${username}`);
 
     // Determine query type
     const isNetId = /^\d{3}-\d{3}$/.test(username);
@@ -44,7 +48,13 @@ router.post('/request', auth, async (req, res) => {
 
     // Find Target
     const target = await User.findOne(query);
-    if (!target) return res.status(404).json({ msg: 'User not found' });
+    if (!target) {
+        console.log(`[Friend Request] Target not found: ${username}`);
+        return res.status(404).json({ msg: 'User not found' });
+    }
+    
+    console.log(`[Friend Request] Target found: ${target._id} (${target.username})`);
+
     if (target._id.toString() === senderId) return res.status(400).json({ msg: 'Cannot add yourself' });
 
     // Check existing connection
