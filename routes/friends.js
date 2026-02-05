@@ -65,8 +65,25 @@ router.post('/request', auth, async (req, res) => {
 
     if (target._id.toString() === senderId) return res.status(400).json({ msg: 'Cannot add yourself' });
 
-    // Check existing connection
     const sender = await User.findById(senderId);
+    
+    // Check if target has blocked sender
+    const isBlockedByTarget = target.blockedUsers.find(
+      b => b.userId.toString() === senderId
+    );
+    if (isBlockedByTarget) {
+      return res.status(403).json({ msg: 'Cannot send request to this user' });
+    }
+    
+    // Check if sender has blocked target
+    const hasBlockedTarget = sender.blockedUsers.find(
+      b => b.userId.toString() === target._id.toString()
+    );
+    if (hasBlockedTarget) {
+      return res.status(403).json({ msg: 'You have blocked this user. Unblock to send request.' });
+    }
+
+    // Check existing connection
     const existing = sender.friends.find(f => f.friendId.toString() === target._id.toString());
     
     if (existing) {
@@ -133,6 +150,138 @@ router.post('/reject', auth, async (req, res) => {
     res.json({ msg: 'Connection severed' });
   } catch (err) {
     console.error(err.message);
+    res.status(500).send('Server Error');
+  }
+});
+
+// GET /api/friends/blocked - Get blocked users
+router.get('/blocked', auth, async (req, res) => {
+  try {
+    const user = await User.findById(req.user.id)
+      .populate('blockedUsers.userId', 'username avatar stats netId')
+      .select('blockedUsers');
+
+    if (!user) return res.status(404).json({ msg: 'User not found' });
+
+    const blockedUsers = user.blockedUsers
+      .filter(b => b.userId)
+      .map(b => ({
+        id: b.userId._id,
+        username: b.userId.username,
+        netId: b.userId.netId,
+        avatar: b.userId.avatar,
+        reason: b.reason,
+        blockedAt: b.blockedAt
+      }));
+
+    res.json(blockedUsers);
+  } catch (err) {
+    console.error('[GET /friends/blocked] Error:', err.message);
+    res.status(500).send('Server Error');
+  }
+});
+
+// POST /api/friends/block - Block a user
+router.post('/block', auth, async (req, res) => {
+  try {
+    const { userId: targetUserId, reason = '' } = req.body;
+    const currentUserId = req.user.id;
+
+    if (targetUserId === currentUserId) {
+      return res.status(400).json({ msg: 'Cannot block yourself' });
+    }
+
+    const currentUser = await User.findById(currentUserId);
+    const targetUser = await User.findById(targetUserId);
+
+    if (!targetUser) {
+      return res.status(404).json({ msg: 'User not found' });
+    }
+
+    // Check if already blocked
+    const alreadyBlocked = currentUser.blockedUsers.find(
+      b => b.userId.toString() === targetUserId
+    );
+
+    if (alreadyBlocked) {
+      return res.status(400).json({ msg: 'User already blocked' });
+    }
+
+    // Remove from friends if they are friends
+    await User.findByIdAndUpdate(currentUserId, { 
+      $pull: { friends: { friendId: targetUserId } },
+      $push: { blockedUsers: { userId: targetUserId, reason } }
+    });
+
+    await User.findByIdAndUpdate(targetUserId, { 
+      $pull: { friends: { friendId: currentUserId } }
+    });
+
+    res.json({ msg: 'User blocked successfully' });
+  } catch (err) {
+    console.error('[POST /friends/block] Error:', err.message);
+    res.status(500).send('Server Error');
+  }
+});
+
+// POST /api/friends/unblock - Unblock a user
+router.post('/unblock', auth, async (req, res) => {
+  try {
+    const { userId: targetUserId } = req.body;
+    const currentUserId = req.user.id;
+
+    await User.findByIdAndUpdate(currentUserId, {
+      $pull: { blockedUsers: { userId: targetUserId } }
+    });
+
+    res.json({ msg: 'User unblocked successfully' });
+  } catch (err) {
+    console.error('[POST /friends/unblock] Error:', err.message);
+    res.status(500).send('Server Error');
+  }
+});
+
+// POST /api/friends/report - Report a user
+router.post('/report', auth, async (req, res) => {
+  try {
+    const { userId: reportedUserId, reason, details = '' } = req.body;
+    const currentUserId = req.user.id;
+
+    if (reportedUserId === currentUserId) {
+      return res.status(400).json({ msg: 'Cannot report yourself' });
+    }
+
+    const currentUser = await User.findById(currentUserId);
+    const reportedUser = await User.findById(reportedUserId);
+
+    if (!reportedUser) {
+      return res.status(404).json({ msg: 'User not found' });
+    }
+
+    if (!reason) {
+      return res.status(400).json({ msg: 'Reason is required' });
+    }
+
+    // Check if already reported
+    const alreadyReported = currentUser.reports.find(
+      r => r.reportedUserId.toString() === reportedUserId
+    );
+
+    if (alreadyReported) {
+      return res.status(400).json({ msg: 'You have already reported this user' });
+    }
+
+    currentUser.reports.push({
+      reportedUserId,
+      reason,
+      details
+    });
+
+    await currentUser.save();
+
+    res.json({ msg: 'Report submitted successfully' });
+  } catch (err) {
+    console.error('[POST /friends/report] Error:', err.message);
     res.status(500).send('Server Error');
   }
 });
