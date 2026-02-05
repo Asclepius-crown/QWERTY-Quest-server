@@ -49,6 +49,7 @@ const UserSchema = new mongoose.Schema({
     default: 'avatar1'
   },
   stats: {
+    racesCompleted: { type: Number, default: 0 },
     racesWon: { type: Number, default: 0 },
     bestWPM: { type: Number, default: 0 },
     avgWPM: { type: Number, default: 0 },

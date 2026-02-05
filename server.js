@@ -165,6 +165,48 @@ const startServer = async () => {
             participant.timeTaken = timeTaken;
             participant.replayData = replayData;
             participant.completedAt = new Date();
+
+            // Persist INDIVIDUAL result immediately
+            try {
+              await Race.updateOne(
+                { _id: race.id, 'participants.userId': userId },
+                { 
+                  $set: { 
+                    'participants.$.wpm': wpm,
+                    'participants.$.accuracy': accuracy,
+                    'participants.$.errors': errors,
+                    'participants.$.timeTaken': timeTaken,
+                    'participants.$.completedAt': participant.completedAt,
+                    'participants.$.replayData': replayData
+                  }
+                }
+              );
+
+              // Update user stats immediately
+              const user = await User.findById(userId);
+              if (user) {
+                user.stats.bestWPM = Math.max(user.stats.bestWPM, wpm);
+                user.stats.xp += Math.floor(wpm / 10);
+                
+                // Update average WPM
+                // Ensure racesCompleted is initialized (handle migration case)
+                if (user.stats.racesCompleted === undefined) user.stats.racesCompleted = 0;
+                
+                const previousTotal = user.stats.racesCompleted;
+                user.stats.racesCompleted += 1;
+                
+                // Calculate new average
+                // ((oldAvg * oldTotal) + newWPM) / newTotal
+                user.stats.avgWPM = Math.round(
+                  ((user.stats.avgWPM * previousTotal) + wpm) / user.stats.racesCompleted
+                );
+
+                await user.save();
+              }
+
+            } catch (err) {
+              console.error('Error saving race progress:', err);
+            }
           }
 
           // Check if all finished
@@ -174,22 +216,20 @@ const startServer = async () => {
             const winner = race.participants.reduce((prev, curr) => (curr.wpm > prev.wpm ? curr : prev));
             
             await Race.findByIdAndUpdate(race.id, {
-              participants: race.participants,
               winner: winner.userId,
               endTime: new Date()
             });
 
-            // Update user stats
-            for (const p of race.participants) {
-              const user = await User.findById(p.userId);
-              if (user) {
-                user.stats.bestWPM = Math.max(user.stats.bestWPM, p.wpm);
-                user.stats.racesWon += (p.userId === winner.userId ? 1 : 0);
-                user.stats.xp += Math.floor(p.wpm / 10);
-                const totalRaces = user.stats.racesWon + (user.stats.racesWon === 0 ? 1 : 0); // rough
-                user.stats.avgWPM = Math.round((user.stats.avgWPM * (totalRaces - 1) + p.wpm) / totalRaces);
-                await user.save();
-              }
+            // Update user stats (Only Win count and Bonus XP if applicable)
+            // Note: bestWPM, avgWPM, and base XP are already updated above.
+            
+            // Just update the winner
+            const winnerUser = await User.findById(winner.userId);
+            if (winnerUser) {
+                winnerUser.stats.racesWon += 1;
+                // Optional: Bonus XP for winning?
+                // winnerUser.stats.xp += 50; 
+                await winnerUser.save();
             }
 
             io.to(raceId).emit('race-results', {

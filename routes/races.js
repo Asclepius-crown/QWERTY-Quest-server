@@ -32,9 +32,12 @@ router.post('/', auth, async (req, res) => {
     user.stats.racesWon += 1; // For solo, always "won"
     user.stats.xp += Math.floor(wpm / 10); // Simple XP system
 
-    // Update average WPM (simple moving average)
-    const totalRaces = user.stats.racesWon;
-    user.stats.avgWPM = Math.round((user.stats.avgWPM * (totalRaces - 1) + wpm) / totalRaces);
+    // Update average WPM (using racesCompleted)
+    if (user.stats.racesCompleted === undefined) user.stats.racesCompleted = 0;
+    const previousTotal = user.stats.racesCompleted;
+    user.stats.racesCompleted += 1;
+    
+    user.stats.avgWPM = Math.round(((user.stats.avgWPM * previousTotal) + wpm) / user.stats.racesCompleted);
 
     await user.save();
 
