@@ -1,5 +1,6 @@
 const dotenv = require('dotenv');
 const socketIo = require('socket.io');
+const mongoose = require('mongoose');
 const Text = require('./models/Text');
 const Race = require('./models/Race');
 const User = require('./models/User');
@@ -155,6 +156,8 @@ const startServer = async () => {
 
       socket.on('race-finished', async (data) => {
         const { raceId, userId, wpm, accuracy, errors, timeTaken, replayData } = data;
+        console.log(`[Race Finished] Race: ${raceId}, User: ${userId}, WPM: ${wpm}`);
+
         const race = activeRaces.get(raceId);
         if (race) {
           const participant = race.participants.find(p => p.userId === userId);
@@ -168,8 +171,11 @@ const startServer = async () => {
 
             // Persist INDIVIDUAL result immediately
             try {
-              await Race.updateOne(
-                { _id: race.id, 'participants.userId': userId },
+              const result = await Race.updateOne(
+                { 
+                  _id: race.id, 
+                  'participants.userId': new mongoose.Types.ObjectId(userId) 
+                },
                 { 
                   $set: { 
                     'participants.$.wpm': wpm,
@@ -181,6 +187,7 @@ const startServer = async () => {
                   }
                 }
               );
+              console.log('[DB Update] Result:', result);
 
               // Update user stats immediately
               const user = await User.findById(userId);
