@@ -7,11 +7,16 @@ const mongoose = require('mongoose');
 // GET /api/friends - Get all friends and requests
 router.get('/', auth, async (req, res) => {
   try {
+    console.log(`[GET /friends] Fetching for user: ${req.user.id}`);
+    
     const user = await User.findById(req.user.id)
       .populate('friends.friendId', 'username avatar stats isMfaEnabled status netId') // Minimal fields
       .select('friends');
 
     if (!user) return res.status(404).json({ msg: 'User not found' });
+
+    console.log(`[GET /friends] Raw friends count: ${user.friends.length}`);
+    console.log(`[GET /friends] Raw friends data:`, JSON.stringify(user.friends, null, 2));
 
     // Format for client
     const friends = user.friends
@@ -21,15 +26,18 @@ router.get('/', auth, async (req, res) => {
         username: f.friendId.username,
         netId: f.friendId.netId,
         avatar: f.friendId.avatar,
-        rank: f.friendId.stats.rank,
+        rank: f.friendId.stats?.rank || 'Unranked',
         status: f.status, // pending_sent, pending_received, accepted
         intimacy: f.intimacy,
         since: f.since
       }));
+    
+    const pendingReceived = friends.filter(f => f.status === 'pending_received');
+    console.log(`[GET /friends] Pending received: ${pendingReceived.length}`);
 
     res.json(friends);
   } catch (err) {
-    console.error(err.message);
+    console.error('[GET /friends] Error:', err.message);
     res.status(500).send('Server Error');
   }
 });
