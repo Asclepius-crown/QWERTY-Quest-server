@@ -74,7 +74,11 @@ router.post('/signup', [
      const payload = { user: { id: user.id } };
      jwt.sign(payload, process.env.JWT_SECRET || 'secret123', { expiresIn: '1d' }, async (err, token) => {
        if (err) throw err;
-       res.cookie('token', token, { httpOnly: true, secure: process.env.NODE_ENV === 'production', sameSite: 'strict' });
+        res.cookie('token', token, { 
+          httpOnly: true, 
+          secure: process.env.NODE_ENV === 'production', 
+          sameSite: process.env.NODE_ENV === 'production' ? 'none' : 'strict'
+        });
        await Log.create({ userId: user.id, action: 'signup', ip: req.ip, userAgent: req.get('User-Agent') });
        res.json({ user: { id: user.id, username: user.username, stats: user.stats, netId: user.netId } });
      });
@@ -137,7 +141,11 @@ router.post('/login', [
      const payload = { user: { id: user.id } };
      jwt.sign(payload, process.env.JWT_SECRET || 'secret123', { expiresIn: '1d' }, async (err, token) => {
        if (err) throw err;
-       res.cookie('token', token, { httpOnly: true, secure: process.env.NODE_ENV === 'production', sameSite: 'strict' });
+        res.cookie('token', token, { 
+          httpOnly: true, 
+          secure: process.env.NODE_ENV === 'production', 
+          sameSite: process.env.NODE_ENV === 'production' ? 'none' : 'strict'
+        });
        try {
          await Log.create({ userId: user.id, action: 'login', ip: req.ip, userAgent: req.get('User-Agent') });
        } catch (e) {
@@ -154,7 +162,11 @@ router.post('/login', [
 
 // Logout
 router.post('/logout', (req, res) => {
-  res.clearCookie('token');
+  res.clearCookie('token', { 
+    httpOnly: true, 
+    secure: process.env.NODE_ENV === 'production', 
+    sameSite: process.env.NODE_ENV === 'production' ? 'none' : 'strict'
+  });
   res.json({ msg: 'Logged out' });
 });
 
@@ -192,7 +204,11 @@ router.get('/google/callback', passport.authenticate('google', { failureRedirect
   const payload = { user: { id: req.user.id } };
   jwt.sign(payload, process.env.JWT_SECRET || 'secret123', { expiresIn: '1d' }, (err, token) => {
     if (err) throw err;
-    res.cookie('token', token, { httpOnly: true, secure: process.env.NODE_ENV === 'production', sameSite: 'strict' });
+    res.cookie('token', token, { 
+      httpOnly: true, 
+      secure: process.env.NODE_ENV === 'production', 
+      sameSite: process.env.NODE_ENV === 'production' ? 'none' : 'strict'
+    });
     res.redirect(process.env.CLIENT_URL || 'http://localhost:5173');
   });
 });
@@ -203,7 +219,11 @@ router.get('/github/callback', passport.authenticate('github', { failureRedirect
   const payload = { user: { id: req.user.id } };
   jwt.sign(payload, process.env.JWT_SECRET || 'secret123', { expiresIn: '1d' }, (err, token) => {
     if (err) throw err;
-    res.cookie('token', token, { httpOnly: true, secure: process.env.NODE_ENV === 'production', sameSite: 'strict' });
+    res.cookie('token', token, { 
+      httpOnly: true, 
+      secure: process.env.NODE_ENV === 'production', 
+      sameSite: process.env.NODE_ENV === 'production' ? 'none' : 'strict'
+    });
     res.redirect(process.env.CLIENT_URL || 'http://localhost:5173');
   });
 });
@@ -214,7 +234,11 @@ router.get('/discord/callback', passport.authenticate('discord', { failureRedire
   const payload = { user: { id: req.user.id } };
   jwt.sign(payload, process.env.JWT_SECRET || 'secret123', { expiresIn: '1d' }, (err, token) => {
     if (err) throw err;
-    res.cookie('token', token, { httpOnly: true, secure: process.env.NODE_ENV === 'production', sameSite: 'strict' });
+    res.cookie('token', token, { 
+      httpOnly: true, 
+      secure: process.env.NODE_ENV === 'production', 
+      sameSite: process.env.NODE_ENV === 'production' ? 'none' : 'strict'
+    });
     res.redirect(process.env.CLIENT_URL || 'http://localhost:5173');
   });
 });
@@ -329,7 +353,11 @@ router.post('/webauthn/authenticate/finish', async (req, res) => {
       const payload = { user: { id: user.id } };
      jwt.sign(payload, process.env.JWT_SECRET || 'secret123', { expiresIn: '1d' }, async (err, token) => {
        if (err) throw err;
-       res.cookie('token', token, { httpOnly: true, secure: process.env.NODE_ENV === 'production', sameSite: 'strict' });
+        res.cookie('token', token, { 
+          httpOnly: true, 
+          secure: process.env.NODE_ENV === 'production', 
+          sameSite: process.env.NODE_ENV === 'production' ? 'none' : 'strict'
+        });
        await Log.create({ userId: user.id, action: 'login', ip: req.ip, userAgent: req.get('User-Agent') });
        res.json({ user: { id: user.id, username: user.username, stats: user.stats } });
      });
@@ -421,7 +449,11 @@ router.get('/login', (req, res) => {
     if (err) return res.status(400).send('Invalid or expired token');
     jwt.sign({ user: { id: decoded.userId } }, process.env.JWT_SECRET, { expiresIn: '1d' }, (err, newToken) => {
       if (err) throw err;
-      res.cookie('token', newToken, { httpOnly: true, secure: process.env.NODE_ENV === 'production', sameSite: 'strict' });
+      res.cookie('token', newToken, { 
+        httpOnly: true, 
+        secure: process.env.NODE_ENV === 'production', 
+        sameSite: process.env.NODE_ENV === 'production' ? 'none' : 'strict'
+      });
       res.redirect(process.env.CLIENT_URL || 'http://localhost:5173');
     });
   });
