@@ -77,10 +77,12 @@ const startServer = async () => {
     });
 
     let matchmakingQueue = [];
+    let rankedQueue = []; // Separate queue for ranked matches
     let activeRaces = new Map(); // raceId -> { participants, text, startTime, ... }
     let connectedUsers = new Map(); // userId -> socketId (for notifications/invites)
     let privateLobbies = new Map(); // roomId -> [participants]
     let matchmakingStartTimes = new Map(); // userId -> timestamp when joined queue
+    let rankedMatchmakingStartTimes = new Map(); // userId -> timestamp when joined ranked queue
     
     // Expose connectedUsers to routes via app.locals
     app.locals.connectedUsers = connectedUsers;
@@ -250,7 +252,8 @@ const startServer = async () => {
             text: textDoc.content,
             textId: textDoc._id,
             startTime: Date.now() + 3000, // 3 second countdown
-            progress: new Map()
+            progress: new Map(),
+            type: 'multiplayer'
           });
 
           // Emit to participants
@@ -266,13 +269,141 @@ const startServer = async () => {
                   username: p.username,
                   displayName: p.displayName
                 })),
-                startTime: activeRaces.get(raceId).startTime
+                startTime: activeRaces.get(raceId).startTime,
+                type: 'multiplayer'
               });
             }
           });
         } else {
           socket.emit('waiting-for-opponent');
         }
+      });
+
+      // --- Ranked Matchmaking ---
+      socket.on('join-ranked-queue', async (data) => {
+        const { userId } = data;
+        
+        // Get user's ELO for skill-based matching
+        const user = await User.findById(userId);
+        if (!user) {
+          socket.emit('ranked-queue-error', { message: 'User not found' });
+          return;
+        }
+        
+        const userElo = user.stats.elo || 1000;
+        
+        // Add to ranked queue with ELO
+        rankedQueue.push({ 
+          socketId: socket.id, 
+          userId, 
+          joinTime: Date.now(),
+          elo: userElo
+        });
+        rankedMatchmakingStartTimes.set(userId, Date.now());
+        
+        // Try to find a match within acceptable ELO range
+        const ELO_THRESHOLD = 200; // Maximum ELO difference for matching
+        
+        const potentialOpponents = rankedQueue.filter(p => 
+          p.userId !== userId && Math.abs(p.elo - userElo) <= ELO_THRESHOLD
+        );
+        
+        if (potentialOpponents.length > 0) {
+          // Find closest ELO match
+          const opponent = potentialOpponents.reduce((closest, current) => 
+            Math.abs(current.elo - userElo) < Math.abs(closest.elo - userElo) ? current : closest
+          );
+          
+          // Remove both players from queue
+          rankedQueue = rankedQueue.filter(p => p.userId !== userId && p.userId !== opponent.userId);
+          
+          // Calculate matchmaking times
+          const { trackMatchmakingTime } = require('./routes/stats');
+          [userId, opponent.userId].forEach(id => {
+            const startTime = rankedMatchmakingStartTimes.get(id);
+            if (startTime) {
+              const waitTime = (Date.now() - startTime) / 1000;
+              trackMatchmakingTime(waitTime);
+              rankedMatchmakingStartTimes.delete(id);
+            }
+          });
+          
+          const raceId = `ranked_${Date.now()}_${Math.random()}`;
+          
+          // Get random text for ranked match
+          const textDoc = await Text.findOne({ difficulty: 'medium' });
+          if (!textDoc) return;
+          
+          // Fetch user details
+          const queueParticipants = [
+            { socketId: socket.id, userId, elo: userElo },
+            opponent
+          ];
+          
+          const participantsWithUserDetails = await Promise.all(
+            queueParticipants.map(async (p) => {
+              const player = await User.findById(p.userId);
+              return {
+                ...p,
+                username: player?.username || 'Unknown',
+                displayName: player?.displayName || player?.username || 'Unknown',
+                rank: player?.stats?.rank || 'Bronze',
+                elo: player?.stats?.elo || 1000
+              };
+            })
+          );
+          
+          const race = new Race({
+            participants: participantsWithUserDetails.map(p => ({ userId: p.userId })),
+            text: textDoc._id,
+            type: 'ranked',
+            rankedData: {
+              averageElo: (userElo + opponent.elo) / 2,
+              rankTier: user.stats.rank
+            }
+          });
+          await race.save();
+          
+          activeRaces.set(raceId, {
+            id: race._id,
+            participants: participantsWithUserDetails,
+            text: textDoc.content,
+            textId: textDoc._id,
+            startTime: Date.now() + 3000,
+            progress: new Map(),
+            type: 'ranked'
+          });
+          
+          // Emit to participants
+          participantsWithUserDetails.forEach(p => {
+            const sock = io.sockets.sockets.get(p.socketId);
+            if (sock) {
+              sock.join(raceId);
+              sock.emit('race-matched', {
+                raceId,
+                text: textDoc.content,
+                participants: participantsWithUserDetails.map(p => ({ 
+                  userId: p.userId,
+                  username: p.username,
+                  displayName: p.displayName,
+                  rank: p.rank,
+                  elo: p.elo
+                })),
+                startTime: activeRaces.get(raceId).startTime,
+                type: 'ranked'
+              });
+            }
+          });
+        } else {
+          socket.emit('waiting-for-opponent', { queueType: 'ranked' });
+        }
+      });
+      
+      socket.on('leave-ranked-queue', (data) => {
+        const { userId } = data;
+        rankedQueue = rankedQueue.filter(p => p.userId !== userId);
+        rankedMatchmakingStartTimes.delete(userId);
+        socket.emit('left-ranked-queue');
       });
 
       socket.on('race-progress', (data) => {
@@ -350,29 +481,101 @@ const startServer = async () => {
           const finished = race.participants.every(p => p.completedAt);
           if (finished) {
             // Determine winner (highest WPM)
-            const winner = race.participants.reduce((prev, curr) => (curr.wpm > prev.wpm ? curr : prev));
+            const sortedParticipants = [...race.participants].sort((a, b) => b.wpm - a.wpm);
+            const winner = sortedParticipants[0];
+            const isDraw = sortedParticipants.length > 1 && sortedParticipants[0].wpm === sortedParticipants[1].wpm;
             
             await Race.findByIdAndUpdate(race.id, {
-              winner: winner.userId,
+              winner: isDraw ? null : winner.userId,
               endTime: new Date()
             });
 
-            // Update user stats (Only Win count and Bonus XP if applicable)
-            // Note: bestWPM, avgWPM, and base XP are already updated above.
-            
-            // Just update the winner
-            const winnerUser = await User.findById(winner.userId);
-            if (winnerUser) {
+            // Handle Ranked Match ELO Calculations
+            if (race.type === 'ranked' && race.participants.length === 2) {
+              const player1 = race.participants[0];
+              const player2 = race.participants[1];
+              
+              const user1 = await User.findById(player1.userId);
+              const user2 = await User.findById(player2.userId);
+              
+              if (user1 && user2) {
+                let result1, result2;
+                
+                if (isDraw) {
+                  result1 = 0.5;
+                  result2 = 0.5;
+                } else if (player1.userId === winner.userId) {
+                  result1 = 1;
+                  result2 = 0;
+                } else {
+                  result1 = 0;
+                  result2 = 1;
+                }
+                
+                const oldElo1 = user1.stats.elo || 1000;
+                const oldElo2 = user2.stats.elo || 1000;
+                
+                const change1 = User.calculateEloChange(oldElo1, oldElo2, result1);
+                const change2 = User.calculateEloChange(oldElo2, oldElo1, result2);
+                
+                user1.stats.elo = oldElo1 + change1;
+                user2.stats.elo = oldElo2 + change2;
+                
+                // Update ranked win/loss/draw stats
+                if (result1 === 1) {
+                  user1.stats.rankedWins = (user1.stats.rankedWins || 0) + 1;
+                  user2.stats.rankedLosses = (user2.stats.rankedLosses || 0) + 1;
+                } else if (result1 === 0) {
+                  user1.stats.rankedLosses = (user1.stats.rankedLosses || 0) + 1;
+                  user2.stats.rankedWins = (user2.stats.rankedWins || 0) + 1;
+                } else {
+                  user1.stats.rankedDraws = (user1.stats.rankedDraws || 0) + 1;
+                  user2.stats.rankedDraws = (user2.stats.rankedDraws || 0) + 1;
+                }
+                
+                // Update regular win count for winner
+                if (!isDraw) {
+                  const winnerUser = winner.userId === player1.userId ? user1 : user2;
+                  winnerUser.stats.racesWon += 1;
+                }
+                
+                await user1.save();
+                await user2.save();
+                
+                // Update race with ELO changes
+                await Race.findByIdAndUpdate(race.id, {
+                  'rankedData.eloChanges': [
+                    { userId: player1.userId, oldElo: oldElo1, newElo: user1.stats.elo, change: change1 },
+                    { userId: player2.userId, oldElo: oldElo2, newElo: user2.stats.elo, change: change2 }
+                  ]
+                });
+                
+                // Emit detailed results for ranked matches
+                io.to(raceId).emit('race-results', {
+                  participants: race.participants,
+                  winner: isDraw ? null : winner.userId,
+                  type: 'ranked',
+                  eloChanges: [
+                    { userId: player1.userId, change: change1, newElo: user1.stats.elo },
+                    { userId: player2.userId, change: change2, newElo: user2.stats.elo }
+                  ],
+                  isDraw
+                });
+              }
+            } else {
+              // Non-ranked match - just update winner
+              const winnerUser = await User.findById(winner.userId);
+              if (winnerUser && !isDraw) {
                 winnerUser.stats.racesWon += 1;
-                // Optional: Bonus XP for winning?
-                // winnerUser.stats.xp += 50; 
                 await winnerUser.save();
+              }
+              
+              io.to(raceId).emit('race-results', {
+                participants: race.participants,
+                winner: isDraw ? null : winner.userId,
+                type: race.type || 'multiplayer'
+              });
             }
-
-            io.to(raceId).emit('race-results', {
-              participants: race.participants,
-              winner: winner.userId
-            });
 
             activeRaces.delete(raceId);
           }
@@ -383,6 +586,7 @@ const startServer = async () => {
         console.log('User disconnected:', socket.id);
         // Remove from queue if waiting
         matchmakingQueue = matchmakingQueue.filter(p => p.socketId !== socket.id);
+        rankedQueue = rankedQueue.filter(p => p.socketId !== socket.id);
       });
     });
 

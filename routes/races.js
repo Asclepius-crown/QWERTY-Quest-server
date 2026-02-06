@@ -7,7 +7,7 @@ const auth = require('../middleware/auth');
 // POST /api/races - Save race results
 router.post('/', auth, async (req, res) => {
   try {
-    const { textId, wpm, accuracy, errors, timeTaken } = req.body;
+    const { textId, wpm, accuracy, errors, timeTaken, mode, language, isBlindMode } = req.body;
 
     // Create race
     const race = new Race({
@@ -20,7 +20,7 @@ router.post('/', auth, async (req, res) => {
         completedAt: new Date()
       }],
       text: textId,
-      type: 'solo',
+      type: mode || 'solo',
       endTime: new Date()
     });
 
@@ -28,6 +28,7 @@ router.post('/', auth, async (req, res) => {
 
     // Update user stats
     const user = await User.findById(req.user.id);
+    const previousBestWPM = user.stats.bestWPM;
     user.stats.bestWPM = Math.max(user.stats.bestWPM, wpm);
     user.stats.racesWon += 1; // For solo, always "won"
     user.stats.xp += Math.floor(wpm / 10); // Simple XP system
@@ -39,9 +40,73 @@ router.post('/', auth, async (req, res) => {
     
     user.stats.avgWPM = Math.round(((user.stats.avgWPM * previousTotal) + wpm) / user.stats.racesCompleted);
 
+    // Initialize achievementProgress if not exists
+    if (!user.achievementProgress) {
+      user.achievementProgress = {};
+    }
+
+    // Update achievement progress
+    const currentHour = new Date().getHours();
+    
+    // Perfect race (100% accuracy)
+    if (accuracy === 100) {
+      user.achievementProgress.perfectRaces = (user.achievementProgress.perfectRaces || 0) + 1;
+    }
+    
+    // High accuracy race (95%+ accuracy)
+    if (accuracy >= 95) {
+      user.achievementProgress.highAccuracyRaces = (user.achievementProgress.highAccuracyRaces || 0) + 1;
+    }
+    
+    // Zero errors
+    if (errors === 0) {
+      user.achievementProgress.zeroErrorRaces = (user.achievementProgress.zeroErrorRaces || 0) + 1;
+    }
+    
+    // Night owl (races between midnight and 4 AM)
+    if (currentHour >= 0 && currentHour < 4) {
+      user.achievementProgress.nightRaces = (user.achievementProgress.nightRaces || 0) + 1;
+    }
+    
+    // Early bird (races before 8 AM)
+    if (currentHour >= 4 && currentHour < 8) {
+      user.achievementProgress.morningRaces = (user.achievementProgress.morningRaces || 0) + 1;
+    }
+    
+    // Personal best streak
+    if (wpm > previousBestWPM) {
+      user.achievementProgress.consecutivePB = (user.achievementProgress.consecutivePB || 0) + 1;
+    } else {
+      user.achievementProgress.consecutivePB = 0;
+    }
+    user.achievementProgress.personalBestStreak = Math.max(
+      user.achievementProgress.personalBestStreak || 0,
+      user.achievementProgress.consecutivePB
+    );
+    
+    // Blind mode high WPM (80+)
+    if (isBlindMode && wpm >= 80) {
+      user.achievementProgress.blindModeHighWPM = (user.achievementProgress.blindModeHighWPM || 0) + 1;
+    }
+    
+    // Track languages
+    if (language) {
+      if (!user.achievementProgress.languagesList) {
+        user.achievementProgress.languagesList = [];
+      }
+      if (!user.achievementProgress.languagesList.includes(language)) {
+        user.achievementProgress.languagesList.push(language);
+      }
+      user.achievementProgress.languagesUsed = user.achievementProgress.languagesList.length;
+    }
+
     await user.save();
 
-    res.json({ race, updatedStats: user.stats });
+    res.json({ 
+      race, 
+      updatedStats: user.stats,
+      achievementProgress: user.achievementProgress
+    });
   } catch (err) {
     console.error(err);
     res.status(500).json({ error: 'Server error' });

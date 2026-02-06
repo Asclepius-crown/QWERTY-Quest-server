@@ -26,8 +26,19 @@ const RaceSchema = new mongoose.Schema({
   winner: { type: mongoose.Schema.Types.ObjectId, ref: 'User' },
   type: {
     type: String,
-    enum: ['solo', 'multiplayer'],
+    enum: ['solo', 'multiplayer', 'ranked'],
     default: 'solo'
+  },
+  // Ranked match specific fields
+  rankedData: {
+    eloChanges: [{
+      userId: { type: mongoose.Schema.Types.ObjectId, ref: 'User' },
+      oldElo: Number,
+      newElo: Number,
+      change: Number
+    }],
+    averageElo: Number,
+    rankTier: String
   },
   createdAt: {
     type: Date,
