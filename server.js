@@ -80,6 +80,10 @@ const startServer = async () => {
     let activeRaces = new Map(); // raceId -> { participants, text, startTime, ... }
     let connectedUsers = new Map(); // userId -> socketId (for notifications/invites)
     let privateLobbies = new Map(); // roomId -> [participants]
+    let matchmakingStartTimes = new Map(); // userId -> timestamp when joined queue
+    
+    // Expose connectedUsers to routes via app.locals
+    app.locals.connectedUsers = connectedUsers;
 
     io.on('connection', (socket) => {
       console.log('User connected:', socket.id);
@@ -198,11 +202,23 @@ const startServer = async () => {
 
       socket.on('join-queue', async (data) => {
         const { userId } = data;
-        matchmakingQueue.push({ socketId: socket.id, userId });
+        matchmakingQueue.push({ socketId: socket.id, userId, joinTime: Date.now() });
+        matchmakingStartTimes.set(userId, Date.now());
 
         if (matchmakingQueue.length >= 2) {
           // Start race
           const queueParticipants = matchmakingQueue.splice(0, 2); // Take first 2
+          
+          // Calculate matchmaking times for both participants
+          const { trackMatchmakingTime } = require('./routes/stats');
+          queueParticipants.forEach(p => {
+            const startTime = matchmakingStartTimes.get(p.userId);
+            if (startTime) {
+              const waitTime = (Date.now() - startTime) / 1000; // Convert to seconds
+              trackMatchmakingTime(waitTime);
+              matchmakingStartTimes.delete(p.userId);
+            }
+          });
           const raceId = `race_${Date.now()}_${Math.random()}`;
 
           // Get random text

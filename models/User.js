@@ -46,7 +46,7 @@ const UserSchema = new mongoose.Schema({
   isMfaEnabled: { type: Boolean, default: false },
   avatar: {
     type: String,
-    default: 'avatar1'
+    default: 'cat'
   },
   stats: {
     racesCompleted: { type: Number, default: 0 },

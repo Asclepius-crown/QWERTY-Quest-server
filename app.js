@@ -59,7 +59,7 @@ if (process.env.GOOGLE_CLIENT_ID && process.env.GOOGLE_CLIENT_SECRET) {
           provider: 'google',
           providerId: profile.id,
           displayName: profile.displayName,
-          avatar: 'avatar1',
+          avatar: 'cat',
           netId
         });
         await user.save();
@@ -87,7 +87,7 @@ if (process.env.GITHUB_CLIENT_ID && process.env.GITHUB_CLIENT_SECRET) {
           provider: 'github',
           providerId: profile.id,
           displayName: profile.displayName,
-          avatar: 'avatar1',
+          avatar: 'cat',
           netId
         });
         await user.save();
@@ -116,7 +116,7 @@ if (process.env.DISCORD_CLIENT_ID && process.env.DISCORD_CLIENT_SECRET) {
           provider: 'discord',
           providerId: profile.id,
           displayName: profile.username,
-          avatar: 'avatar1',
+          avatar: 'cat',
           netId
         });
         await user.save();
@@ -135,6 +135,7 @@ app.use('/api/user', require('./routes/user'));
 app.use('/api/texts', require('./routes/texts'));
 app.use('/api/races', require('./routes/races'));
 app.use('/api/friends', require('./routes/friends'));
+app.use('/api/stats', require('./routes/stats'));
 
 // 404 handler (API only) - Let Vercel handle static assets or fallback
 app.get('/', (req, res) => {
