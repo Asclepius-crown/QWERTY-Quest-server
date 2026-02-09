@@ -1,4 +1,6 @@
 const dotenv = require('dotenv');
+dotenv.config();
+
 const socketIo = require('socket.io');
 const mongoose = require('mongoose');
 const Text = require('./models/Text');
@@ -6,8 +8,6 @@ const Race = require('./models/Race');
 const User = require('./models/User');
 const app = require('./app');
 const connectDB = require('./db');
-
-dotenv.config();
 
 // Seed sample texts
 const seedTexts = async () => {

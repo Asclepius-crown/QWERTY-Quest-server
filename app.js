@@ -50,19 +50,32 @@ if (process.env.GOOGLE_CLIENT_ID && process.env.GOOGLE_CLIENT_SECRET) {
     callbackURL: `${process.env.BASE_URL || 'http://localhost:5000'}/api/auth/google/callback`
   }, async (accessToken, refreshToken, profile, done) => {
     try {
+      // First check if user exists with this OAuth provider
       let user = await User.findOne({ providerId: profile.id, provider: 'google' });
+      
       if (!user) {
-        const netId = await generateNetId();
-        user = new User({
-          username: profile.displayName.replace(/\s+/g, '').toLowerCase() || profile.emails[0].value.split('@')[0],
-          email: profile.emails[0].value,
-          provider: 'google',
-          providerId: profile.id,
-          displayName: profile.displayName,
-          avatar: 'cat',
-          netId
-        });
-        await user.save();
+        // Check if user exists with same email (from email/password signup)
+        user = await User.findOne({ email: profile.emails[0].value });
+        
+        if (user) {
+          // Link OAuth to existing account
+          user.provider = 'google';
+          user.providerId = profile.id;
+          await user.save();
+        } else {
+          // Create new user
+          const netId = await generateNetId();
+          user = new User({
+            username: profile.displayName.replace(/\s+/g, '').toLowerCase() || profile.emails[0].value.split('@')[0],
+            email: profile.emails[0].value,
+            provider: 'google',
+            providerId: profile.id,
+            displayName: profile.displayName,
+            avatar: 'cat',
+            netId
+          });
+          await user.save();
+        }
       }
       done(null, user);
     } catch (err) {
@@ -78,19 +91,32 @@ if (process.env.GITHUB_CLIENT_ID && process.env.GITHUB_CLIENT_SECRET) {
     callbackURL: `${process.env.BASE_URL || 'http://localhost:5000'}/api/auth/github/callback`
   }, async (accessToken, refreshToken, profile, done) => {
     try {
+      // First check if user exists with this OAuth provider
       let user = await User.findOne({ providerId: profile.id, provider: 'github' });
+      
       if (!user) {
-        const netId = await generateNetId();
-        user = new User({
-          username: profile.username,
-          email: profile.emails[0].value,
-          provider: 'github',
-          providerId: profile.id,
-          displayName: profile.displayName,
-          avatar: 'cat',
-          netId
-        });
-        await user.save();
+        // Check if user exists with same email (from email/password signup)
+        user = await User.findOne({ email: profile.emails[0].value });
+        
+        if (user) {
+          // Link OAuth to existing account
+          user.provider = 'github';
+          user.providerId = profile.id;
+          await user.save();
+        } else {
+          // Create new user
+          const netId = await generateNetId();
+          user = new User({
+            username: profile.username,
+            email: profile.emails[0].value,
+            provider: 'github',
+            providerId: profile.id,
+            displayName: profile.displayName,
+            avatar: 'cat',
+            netId
+          });
+          await user.save();
+        }
       }
       done(null, user);
     } catch (err) {
@@ -107,19 +133,32 @@ if (process.env.DISCORD_CLIENT_ID && process.env.DISCORD_CLIENT_SECRET) {
     scope: ['identify', 'email']
   }, async (accessToken, refreshToken, profile, done) => {
     try {
+      // First check if user exists with this OAuth provider
       let user = await User.findOne({ providerId: profile.id, provider: 'discord' });
+      
       if (!user) {
-        const netId = await generateNetId();
-        user = new User({
-          username: profile.username,
-          email: profile.email,
-          provider: 'discord',
-          providerId: profile.id,
-          displayName: profile.username,
-          avatar: 'cat',
-          netId
-        });
-        await user.save();
+        // Check if user exists with same email (from email/password signup)
+        user = await User.findOne({ email: profile.email });
+        
+        if (user) {
+          // Link OAuth to existing account
+          user.provider = 'discord';
+          user.providerId = profile.id;
+          await user.save();
+        } else {
+          // Create new user
+          const netId = await generateNetId();
+          user = new User({
+            username: profile.username,
+            email: profile.email,
+            provider: 'discord',
+            providerId: profile.id,
+            displayName: profile.username,
+            avatar: 'cat',
+            netId
+          });
+          await user.save();
+        }
       }
       done(null, user);
     } catch (err) {

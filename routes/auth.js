@@ -198,9 +198,9 @@ router.get('/me', auth, async (req, res) => {
 });
 
 // OAuth Routes
-router.get('/google', passport.authenticate('google', { scope: ['profile', 'email'] }));
+router.get('/google', passport.authenticate('google', { scope: ['profile', 'email'], session: false }));
 
-router.get('/google/callback', passport.authenticate('google', { failureRedirect: process.env.CLIENT_URL + '/login' || 'http://localhost:5173/login' }), (req, res) => {
+router.get('/google/callback', passport.authenticate('google', { failureRedirect: process.env.CLIENT_URL + '/login' || 'http://localhost:5173/login', session: false }), (req, res) => {
   const payload = { user: { id: req.user.id } };
   jwt.sign(payload, process.env.JWT_SECRET || 'secret123', { expiresIn: '1d' }, (err, token) => {
     if (err) throw err;
@@ -213,9 +213,9 @@ router.get('/google/callback', passport.authenticate('google', { failureRedirect
   });
 });
 
-router.get('/github', passport.authenticate('github', { scope: ['user:email'] }));
+router.get('/github', passport.authenticate('github', { scope: ['user:email'], session: false }));
 
-router.get('/github/callback', passport.authenticate('github', { failureRedirect: process.env.CLIENT_URL + '/login' || 'http://localhost:5173/login' }), (req, res) => {
+router.get('/github/callback', passport.authenticate('github', { failureRedirect: process.env.CLIENT_URL + '/login' || 'http://localhost:5173/login', session: false }), (req, res) => {
   const payload = { user: { id: req.user.id } };
   jwt.sign(payload, process.env.JWT_SECRET || 'secret123', { expiresIn: '1d' }, (err, token) => {
     if (err) throw err;
@@ -228,9 +228,9 @@ router.get('/github/callback', passport.authenticate('github', { failureRedirect
   });
 });
 
-router.get('/discord', passport.authenticate('discord'));
+router.get('/discord', passport.authenticate('discord', { session: false }));
 
-router.get('/discord/callback', passport.authenticate('discord', { failureRedirect: process.env.CLIENT_URL + '/login' || 'http://localhost:5173/login' }), (req, res) => {
+router.get('/discord/callback', passport.authenticate('discord', { failureRedirect: process.env.CLIENT_URL + '/login' || 'http://localhost:5173/login', session: false }), (req, res) => {
   const payload = { user: { id: req.user.id } };
   jwt.sign(payload, process.env.JWT_SECRET || 'secret123', { expiresIn: '1d' }, (err, token) => {
     if (err) throw err;
