@@ -3,13 +3,17 @@ const router = express.Router();
 const Race = require('../models/Race');
 const User = require('../models/User');
 const auth = require('../middleware/auth');
+const coachingAnalysis = require('../utils/coachingAnalysis');
 
 // POST /api/races - Save race results
 router.post('/', auth, async (req, res) => {
   try {
-    const { textId, wpm, accuracy, errors, timeTaken, mode, language, isBlindMode } = req.body;
+    const { textId, wpm, accuracy, errors, timeTaken, mode, language, isBlindMode, replayData, coachingData } = req.body;
 
-    // Create race
+    // Analyze coaching data for insights
+    const coachingInsights = coachingAnalysis.analyzeReplayData(replayData, coachingData);
+
+    // Create race with coaching data
     const race = new Race({
       participants: [{
         userId: req.user.id,
@@ -17,7 +21,10 @@ router.post('/', auth, async (req, res) => {
         accuracy,
         errors,
         timeTaken,
-        completedAt: new Date()
+        completedAt: new Date(),
+        replayData,
+        coachingData,
+        coachingInsights
       }],
       text: textId,
       type: mode || 'solo',
@@ -105,7 +112,8 @@ router.post('/', auth, async (req, res) => {
     res.json({ 
       race, 
       updatedStats: user.stats,
-      achievementProgress: user.achievementProgress
+      achievementProgress: user.achievementProgress,
+      coachingInsights
     });
   } catch (err) {
     console.error(err);

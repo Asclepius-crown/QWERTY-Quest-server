@@ -175,6 +175,7 @@ app.use('/api/texts', require('./routes/texts'));
 app.use('/api/races', require('./routes/races'));
 app.use('/api/friends', require('./routes/friends'));
 app.use('/api/stats', require('./routes/stats'));
+app.use('/api/coaching', require('./routes/coaching'));
 
 // 404 handler (API only) - Let Vercel handle static assets or fallback
 app.get('/', (req, res) => {

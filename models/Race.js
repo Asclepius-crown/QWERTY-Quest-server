@@ -10,8 +10,52 @@ const RaceSchema = new mongoose.Schema({
     completedAt: Date,
     replayData: [{
       time: Number, // ms from start
-      index: Number // char index
-    }]
+      index: Number, // char index
+      keyPressed: String,
+      previousKey: String,
+      transitionTime: Number,
+      isError: Boolean,
+      correctionTime: Number,
+      errorLocation: Number
+    }],
+    coachingData: {
+      keyTransitionTimes: mongoose.Schema.Types.Mixed, // Object with key pairs as keys
+      errorLocations: [Number],
+      correctionAttempts: Number
+    },
+    coachingInsights: {
+      weaknesses: [{
+        type: String,
+        pair: String,
+        severity: String,
+        avgTime: Number,
+        errorCount: Number,
+        description: String
+      }],
+      recommendations: [{
+        type: String,
+        priority: String,
+        title: String,
+        description: String,
+        practiceType: String,
+        targetPair: String
+      }],
+      insights: {
+        avgTransitionTime: Number,
+        errorRate: Number,
+        slowestPairs: [{
+          pair: String,
+          avgTime: Number,
+          totalOccurrences: Number
+        }],
+        mostErrorPronePairs: [{
+          pair: String,
+          errorCount: Number,
+          totalOccurrences: Number
+        }],
+        improvementAreas: [String]
+      }
+    }
   }],
   text: {
     type: mongoose.Schema.Types.ObjectId,
