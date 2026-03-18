@@ -282,23 +282,122 @@ const startServer = async () => {
       // --- Ranked Matchmaking ---
       socket.on('join-ranked-queue', async (data) => {
         const { userId } = data;
-        
-        // Get user's ELO for skill-based matching
-        const user = await User.findById(userId);
-        if (!user) {
-          socket.emit('ranked-queue-error', { message: 'User not found' });
-          return;
+        console.log('join-ranked-queue for user:', userId);
+        try {
+          const user = await User.findById(userId);
+          if (!user) {
+            console.log('User not found for ranked queue:', userId);
+            socket.emit('ranked-queue-error', { message: 'User not found' });
+            return;
+          }
+
+          // Add to ranked queue with ELO
+          rankedQueue.push({ 
+            userId, 
+            socketId: socket.id, 
+            elo: user.stats.elo || 1000,
+            username: user.username,
+            rank: user.stats.rank || 'Bronze'
+          });
+          console.log('Added to ranked queue:', rankedQueue.length, 'players');
+
+          rankedMatchmakingStartTimes.set(userId, Date.now());
+
+          // Try to find opponent within ELO range
+          const potentialOpponents = rankedQueue.filter(p => 
+            p.userId !== userId && 
+            Math.abs(p.elo - (user.stats.elo || 1000)) <= 200 // Within 200 ELO points
+          );
+
+          if (potentialOpponents.length > 0) {
+            console.log('Found potential opponents:', potentialOpponents.length);
+            // Randomly select one
+            const opponent = potentialOpponents[Math.floor(Math.random() * potentialOpponents.length)];
+            
+            // Remove both from queue
+            rankedQueue = rankedQueue.filter(p => p.userId !== userId && p.userId !== opponent.userId);
+            
+            // Clean up matchmaking times
+            [userId, opponent.userId].forEach(id => {
+              rankedMatchmakingStartTimes.delete(id);
+            });
+
+            console.log('Creating ranked match between:', userId, 'and', opponent.userId);
+            const raceId = `ranked_${Date.now()}_${Math.random()}`;
+
+            // Get random text for ranked match
+            const texts = await Text.find({}).limit(100);
+            const randomText = texts[Math.floor(Math.random() * texts.length)];
+
+            // Calculate ELO changes (placeholder)
+            const eloChange = calculateEloChange(user.stats.elo || 1000, opponent.elo, 'draw'); // Will be updated after race
+
+            // Create race
+            const race = new Race({
+              participants: [
+                {
+                  userId,
+                  username: user.username,
+                  displayName: user.displayName || user.username,
+                  avatar: user.avatar,
+                  rank: user.stats.rank,
+                  elo: user.stats.elo
+                },
+                {
+                  userId: opponent.userId,
+                  username: opponent.username,
+                  displayName: opponent.displayName || opponent.username,
+                  avatar: opponent.avatar,
+                  rank: opponent.rank,
+                  elo: opponent.elo
+                }
+              ],
+              text: randomText._id,
+              type: 'ranked',
+              rankedData: {
+                eloChanges: [
+                  { userId, oldElo: user.stats.elo || 1000, newElo: (user.stats.elo || 1000) + eloChange, change: eloChange },
+                  { userId: opponent.userId, oldElo: opponent.elo, newElo: opponent.elo - eloChange, change: -eloChange }
+                ]
+              },
+              startTime: Date.now() + 3000, // 3 seconds to start
+              endTime: new Date()
+            });
+
+            await race.save();
+            console.log('Ranked race created:', raceId);
+
+            // Notify both players
+            io.to(socket.id).emit('race-matched', {
+              raceId,
+              text: randomText.content,
+              participants: race.participants,
+              startTime: race.startTime,
+              type: 'ranked'
+            });
+
+            // Find opponent's socket
+            const opponentSocket = Array.from(io.sockets.sockets.values()).find(s => s.id === opponent.socketId);
+            if (opponentSocket) {
+              opponentSocket.emit('race-matched', {
+                raceId,
+                text: randomText.content,
+                participants: race.participants,
+                startTime: race.startTime,
+                type: 'ranked'
+              });
+            }
+
+            socket.emit('waiting-for-opponent', { queueType: 'ranked' });
+          } else {
+            console.log('No opponents found, waiting...');
+            socket.emit('waiting-for-opponent', { queueType: 'ranked' });
+          }
+        } catch (err) {
+          console.error('Error in join-ranked-queue:', err);
+          socket.emit('ranked-queue-error', { message: 'Server error' });
         }
-        
-        const userElo = user.stats.elo || 1000;
-        
-        // Add to ranked queue with ELO
-        rankedQueue.push({ 
-          socketId: socket.id, 
-          userId, 
-          joinTime: Date.now(),
-          elo: userElo
-        });
+      });
         rankedMatchmakingStartTimes.set(userId, Date.now());
         
         // Try to find a match within acceptable ELO range
