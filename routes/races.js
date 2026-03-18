@@ -8,7 +8,18 @@ const coachingAnalysis = require('../utils/coachingAnalysis');
 // POST /api/races - Save race results
 router.post('/', auth, async (req, res) => {
   try {
+    console.log('POST /races - Processing for user:', req.user?.id);
+    if (!req.user || !req.user.id) {
+      console.log('POST /races - No user authenticated');
+      return res.status(401).json({ error: 'User not authenticated' });
+    }
+
     const { textId, wpm, accuracy, errors, timeTaken, mode, language, isBlindMode, replayData, coachingData } = req.body;
+
+    // Validate required fields
+    if (!wpm || !accuracy || timeTaken === undefined) {
+      return res.status(400).json({ error: 'Missing required race data' });
+    }
 
     // Analyze coaching data for insights
     const coachingInsights = coachingAnalysis.analyzeReplayData(replayData, coachingData);
@@ -32,11 +43,17 @@ router.post('/', auth, async (req, res) => {
     });
 
     await race.save();
+    console.log('POST /races - Race saved for user:', req.user.id);
 
     // Update user stats
     const user = await User.findById(req.user.id);
-    const previousBestWPM = user.stats.bestWPM;
-    user.stats.bestWPM = Math.max(user.stats.bestWPM, wpm);
+    if (!user) {
+      console.log('POST /races - User not found:', req.user.id);
+      return res.status(404).json({ error: 'User not found' });
+    }
+
+    const previousBestWPM = user.stats.bestWPM || 0;
+    user.stats.bestWPM = Math.max(user.stats.bestWPM || 0, wpm);
     user.stats.racesWon += 1; // For solo, always "won"
     user.stats.xp += Math.floor(wpm / 10); // Simple XP system
 
@@ -108,6 +125,7 @@ router.post('/', auth, async (req, res) => {
     }
 
     await user.save();
+    console.log('POST /races - User stats updated for:', req.user.id);
 
     res.json({ 
       race, 
@@ -116,7 +134,7 @@ router.post('/', auth, async (req, res) => {
       coachingInsights
     });
   } catch (err) {
-    console.error(err);
+    console.error('POST /races error:', err);
     res.status(500).json({ error: 'Server error' });
   }
 });

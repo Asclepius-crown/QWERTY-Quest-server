@@ -139,13 +139,21 @@ router.post('/login', [
 
      // Return JWT
      const payload = { user: { id: user.id } };
+     console.log('Login: Creating JWT for user:', user.id);
      jwt.sign(payload, process.env.JWT_SECRET || 'secret123', { expiresIn: '1d' }, async (err, token) => {
-       if (err) throw err;
-        res.cookie('token', token, { 
-          httpOnly: true, 
-          secure: process.env.NODE_ENV === 'production', 
-          sameSite: process.env.NODE_ENV === 'production' ? 'none' : 'strict'
-        });
+       if (err) {
+         console.error('JWT sign error:', err);
+         throw err;
+       }
+       console.log('Login: JWT created, setting cookie');
+       res.cookie('token', token, { 
+         httpOnly: true, 
+         secure: process.env.NODE_ENV === 'production', 
+         sameSite: process.env.NODE_ENV === 'production' ? 'none' : 'strict',
+         domain: process.env.NODE_ENV === 'production' ? '.onrender.com' : undefined,
+         maxAge: 24 * 60 * 60 * 1000 // 1 day
+       });
+       console.log('Login: Cookie set, sending response');
        try {
          await Log.create({ userId: user.id, action: 'login', ip: req.ip, userAgent: req.get('User-Agent') });
        } catch (e) {
@@ -154,10 +162,10 @@ router.post('/login', [
        res.json({ user: { id: user.id, username: user.username, stats: user.stats, netId: user.netId } });
      });
 
-  } catch (err) {
-    console.error(err.message);
-    res.status(500).send('Server Error');
-  }
+   } catch (err) {
+     console.error('Login error:', err.message);
+     res.status(500).send('Server Error');
+   }
 });
 
 // Logout
