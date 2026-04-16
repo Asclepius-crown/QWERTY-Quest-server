@@ -478,12 +478,12 @@ router.post('/forgot-password', [
     const user = await User.findOne({ email });
     if (!user) return res.status(404).json({ error: 'User not found' });
     const token = jwt.sign({ userId: user.id }, process.env.JWT_SECRET, { expiresIn: '15m' });
-    const magicLink = `${process.env.CLIENT_URL || 'http://localhost:5173'}/login?token=${token}`;
+    const resetLink = `${process.env.CLIENT_URL || 'http://localhost:5173'}/reset-password?token=${token}`;
     const mailOptions = {
       from: process.env.EMAIL_USER,
       to: email,
-      subject: 'TypeMaster Magic Login Link',
-      html: `<p>Click <a href="${magicLink}">here</a> to login to TypeMaster. This link expires in 15 minutes.</p>`
+      subject: 'TypeMaster Password Reset',
+      html: `<p>Click <a href="${resetLink}">here</a> to reset your password. This link expires in 15 minutes.</p>`
     };
     
     if (!transporter) {
@@ -500,6 +500,34 @@ router.post('/forgot-password', [
       res.json({ message: 'Magic link sent to your email' });
     });
   } catch (err) {
+    console.error(err);
+    res.status(500).json({ error: 'Server error' });
+  }
+});
+
+// Reset password
+router.post('/reset-password', [
+  body('token').notEmpty(),
+  body('password').isLength({ min: 6 })
+], async (req, res) => {
+  const errors = validationResult(req);
+  if (!errors.isEmpty()) return res.status(400).json({ errors: errors.array() });
+  try {
+    const { token, password } = req.body;
+    const decoded = jwt.verify(token, process.env.JWT_SECRET);
+    const user = await User.findById(decoded.userId);
+    if (!user) return res.status(404).json({ error: 'User not found' });
+
+    const salt = await bcrypt.genSalt(10);
+    const hashedPassword = await bcrypt.hash(password, salt);
+    user.password = hashedPassword;
+    await user.save();
+
+    res.json({ message: 'Password reset successfully' });
+  } catch (err) {
+    if (err.name === 'TokenExpiredError') {
+      return res.status(400).json({ error: 'Token expired' });
+    }
     console.error(err);
     res.status(500).json({ error: 'Server error' });
   }
