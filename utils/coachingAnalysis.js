@@ -5,6 +5,21 @@ const formatPairLabel = (pair) =>
     ? pair.split('').map(char => (char === ' ' ? 'Space' : char.toUpperCase())).join(' + ')
     : pair.toUpperCase();
 
+const PRACTICE_WORDS = (
+  'the that this these those they them their there then than think thing things time timer tiny tired title today ' +
+  'together tonight tomorrow took tool total touch town track trade train travel tree trial trip trouble true trust ' +
+  'try turn type with within without will wind window winter wire wise wish word work world would write hand have ' +
+  'here help high home house hour how who when what where why which while white whole and land stand understand ' +
+  'demand command band brand grand sand end send spend friend blend bend tend trend mind find kind behind remind ' +
+  'bind point print spring string bring ring sing wing king morning evening running planning inside item into ' +
+  'input start state stay step still stop story study such sure system table take talk task teach team tell test ' +
+  'text third about after again all also always another any around because been before being both call came come ' +
+  'could day did does down each even every first from get give going good great had has her him his just know ' +
+  'like little long look made make many may more most much must name new now number off old one only or other our ' +
+  'out over part people place put right said same say see she should show small some something under up use very ' +
+  'want water way we well were year you your'
+).split(' ');
+
 // Coaching Analysis Engine
 class CoachingAnalysis {
   constructor() {
@@ -258,40 +273,28 @@ class CoachingAnalysis {
   }
 
   // Generate practice text based on weaknesses
-  generatePracticeText(weaknesses, length = 200) {
-    let practiceText = '';
+  generatePracticeText(weaknesses = [], length = 200) {
+    const targets = (weaknesses || [])
+      .map(w => w.targetPair || w.pair)
+      .filter(Boolean)
+      .map(pair => pair.toLowerCase());
 
-    // Extract target pairs from weaknesses
-    const targetPairs = weaknesses
-      .filter(w => w.targetPair)
-      .map(w => w.targetPair);
-
-    // Add common pairs if no specific weaknesses
-    if (targetPairs.length === 0) {
-      targetPairs.push(...this.commonKeyPairs.slice(0, 5));
-    }
-
-    // Generate text with repeated target pairs
-    const words = [];
-    targetPairs.forEach(pair => {
-      // Create words containing the pair
-      const wordTemplates = [
-        `${pair}at`, `${pair}is`, `${pair}ed`, `${pair}ing`,
-        `the${pair}`, `and${pair}`, `but${pair}`, `for${pair}`
-      ];
-      words.push(...wordTemplates);
+    // Space pairs mean "word starts/ends with this letter"
+    const matches = (word) => targets.some(pair => {
+      if (pair.startsWith(' ')) return word.startsWith(pair.trim());
+      if (pair.endsWith(' ')) return word.endsWith(pair.trim());
+      return word.includes(pair);
     });
 
-    // Add some common words for context
-    words.push('the', 'and', 'for', 'are', 'but', 'not', 'you', 'all', 'can', 'had', 'her', 'was', 'one', 'our', 'out', 'day', 'get', 'has', 'him', 'his', 'how', 'its', 'may', 'new', 'now', 'old', 'see', 'two', 'way', 'who', 'boy', 'did', 'has', 'let', 'put', 'say', 'she', 'too', 'use');
+    let pool = targets.length > 0 ? PRACTICE_WORDS.filter(matches) : [];
+    if (pool.length < 10) pool = PRACTICE_WORDS;
 
-    // Build practice text
+    let practiceText = '';
     while (practiceText.length < length) {
-      const word = words[Math.floor(Math.random() * words.length)];
-      practiceText += word + ' ';
+      practiceText += (practiceText ? ' ' : '') + pool[Math.floor(Math.random() * pool.length)];
     }
 
-    return practiceText.trim();
+    return practiceText.slice(0, practiceText.lastIndexOf(' ')) || practiceText;
   }
 
   // Aggregate analysis across multiple races for user profile
