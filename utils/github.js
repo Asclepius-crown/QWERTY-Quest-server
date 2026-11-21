@@ -60,7 +60,7 @@ const LANGUAGES_MAP = {
 /**
  * Picks a random code snippet from a trending-like repo
  */
-async function getRandomCodeSnippet() {
+async function getRandomCodeSnippet(targetLength = 250) {
     const popularRepos = [
         { owner: 'facebook', repo: 'react', dir: 'packages/react/src' },
         { owner: 'rust-lang', repo: 'rust', dir: 'library/core/src' },
@@ -80,20 +80,39 @@ async function getRandomCodeSnippet() {
 
     if (codeFiles.length === 0) throw new Error("No code files found in directory");
 
-    const file = codeFiles[Math.floor(Math.random() * codeFiles.length)];
-    let content = await fetchRawFile(target.owner, target.repo, file.path);
+    // Prefer files big enough to fill the requested length
+    const bigEnough = codeFiles.filter(file => (file.size || 0) >= targetLength * 2);
+    const pool = bigEnough.length > 0 ? bigEnough : codeFiles;
 
-    // Basic cleaning: remove very long files, take a chunk
+    // Repo listings can contain stale paths; try another file before giving up
+    let file = null;
+    let content = null;
+    for (let attempt = 0; attempt < 3 && !content; attempt++) {
+        const candidate = pool[Math.floor(Math.random() * pool.length)];
+        try {
+            content = await fetchRawFile(target.owner, target.repo, candidate.path);
+            file = candidate;
+        } catch (err) {
+            // try a different file
+        }
+    }
+    if (!content) throw new Error("No readable code file found in directory");
+
+    // Take a random window of lines long enough for the requested duration
     const lines = content.split('\n');
-    const maxLines = 20;
-    const startLine = Math.floor(Math.random() * Math.max(1, lines.length - maxLines));
-    const chunk = lines.slice(startLine, startLine + maxLines).join('\n');
+    const startLine = Math.floor(Math.random() * lines.length);
+    const chunkLines = [];
+    let length = 0;
+    for (let i = startLine; i < lines.length && length < targetLength; i++) {
+        chunkLines.push(lines[i]);
+        length += lines[i].length + 1;
+    }
 
     return {
-        content: chunk.trim(),
+        content: chunkLines.join('\n').trim(),
         language: LANGUAGES_MAP[path.extname(file.name)],
         source: `https://github.com/${target.owner}/${target.repo}/blob/main/${file.path}`,
-        difficulty: chunk.length > 500 ? 'hard' : (chunk.length > 200 ? 'medium' : 'easy')
+        difficulty: targetLength > 400 ? 'hard' : (targetLength > 200 ? 'medium' : 'easy')
     };
 }
 
