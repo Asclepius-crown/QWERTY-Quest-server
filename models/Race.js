@@ -25,7 +25,7 @@ const RaceSchema = new mongoose.Schema({
     },
     coachingInsights: {
       weaknesses: [{
-        type: String,
+        type: { type: String },
         pair: String,
         severity: String,
         avgTime: Number,
@@ -33,7 +33,7 @@ const RaceSchema = new mongoose.Schema({
         description: String
       }],
       recommendations: [{
-        type: String,
+        type: { type: String },
         priority: String,
         title: String,
         description: String,
