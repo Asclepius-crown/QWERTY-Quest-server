@@ -1,5 +1,10 @@
 const mongoose = require('mongoose');
 
+const formatPairLabel = (pair) =>
+  pair.includes(' ')
+    ? pair.split('').map(char => (char === ' ' ? 'Space' : char.toUpperCase())).join(' + ')
+    : pair.toUpperCase();
+
 // Coaching Analysis Engine
 class CoachingAnalysis {
   constructor() {
@@ -132,7 +137,7 @@ class CoachingAnalysis {
           pair: pair.pair,
           severity: pair.avgTime > 300 ? 'high' : 'medium',
           avgTime: pair.avgTime,
-          description: `Slow transition on "${pair.pair.toUpperCase()}" combination`
+          description: `Slow transition on "${formatPairLabel(pair.pair)}" combination`
         });
       }
     });
@@ -145,7 +150,7 @@ class CoachingAnalysis {
           pair: pair.pair,
           severity: pair.errorCount > 2 ? 'high' : 'medium',
           errorCount: pair.errorCount,
-          description: `Frequent errors on "${pair.pair.toUpperCase()}" combination`
+          description: `Frequent errors on "${formatPairLabel(pair.pair)}" combination`
         });
       }
     });
@@ -207,8 +212,8 @@ class CoachingAnalysis {
           recommendations.push({
             type: 'specific',
             priority: weakness.severity === 'high' ? 'high' : 'medium',
-            title: `Practice "${weakness.pair.toUpperCase()}" Transitions`,
-            description: `Spend time practicing the "${weakness.pair.toUpperCase()}" key combination. Average time: ${Math.round(weakness.avgTime)}ms`,
+            title: `Practice "${formatPairLabel(weakness.pair)}" Transitions`,
+            description: `Spend time practicing the "${formatPairLabel(weakness.pair)}" key combination. Average time: ${Math.round(weakness.avgTime)}ms`,
             practiceType: 'pair_drills',
             targetPair: weakness.pair
           });
@@ -218,7 +223,7 @@ class CoachingAnalysis {
           recommendations.push({
             type: 'specific',
             priority: weakness.severity === 'high' ? 'high' : 'medium',
-            title: `Master "${weakness.pair.toUpperCase()}" Combination`,
+            title: `Master "${formatPairLabel(weakness.pair)}" Combination`,
             description: `This combination causes ${weakness.errorCount} errors. Practice carefully.`,
             practiceType: 'error_correction',
             targetPair: weakness.pair

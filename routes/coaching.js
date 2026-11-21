@@ -118,7 +118,8 @@ router.get('/insights', auth, async (req, res) => {
       createdAt: { $gte: cutoffDate }
     })
     .sort({ createdAt: -1 })
-    .limit(50);
+    .limit(50)
+    .lean();
 
     // Aggregate insights across races
     const aggregatedInsights = {
@@ -139,26 +140,28 @@ router.get('/insights', auth, async (req, res) => {
         totalWpm += participant.wpm || 0;
         totalAccuracy += participant.accuracy || 0;
 
-        // Collect weaknesses
-        if (participant.coachingInsights && participant.coachingInsights.weaknesses) {
-          participant.coachingInsights.weaknesses.forEach(weakness => {
-            const key = `${weakness.type}_${weakness.pair || weakness.direction}`;
-            if (!aggregatedInsights.commonWeaknesses[key]) {
-              aggregatedInsights.commonWeaknesses[key] = {
-                ...weakness,
-                occurrences: 0,
-                races: []
-              };
-            }
-            aggregatedInsights.commonWeaknesses[key].occurrences++;
-            aggregatedInsights.commonWeaknesses[key].races.push({
-              raceId: race._id,
-              date: race.createdAt,
-              wpm: participant.wpm,
-              accuracy: participant.accuracy
-            });
+        // Re-analyze when replay data exists so cached labels stay current
+        const weaknesses = participant.replayData?.length
+          ? coachingAnalysis.analyzeReplayData(participant.replayData, participant.coachingData || {}).weaknesses
+          : (participant.coachingInsights?.weaknesses || []);
+
+        weaknesses.forEach(weakness => {
+          const key = `${weakness.type}_${weakness.pair || weakness.direction}`;
+          if (!aggregatedInsights.commonWeaknesses[key]) {
+            aggregatedInsights.commonWeaknesses[key] = {
+              ...weakness,
+              occurrences: 0,
+              races: []
+            };
+          }
+          aggregatedInsights.commonWeaknesses[key].occurrences++;
+          aggregatedInsights.commonWeaknesses[key].races.push({
+            raceId: race._id,
+            date: race.createdAt,
+            wpm: participant.wpm,
+            accuracy: participant.accuracy
           });
-        }
+        });
 
         // Track progression
         aggregatedInsights.skillProgression.push({
